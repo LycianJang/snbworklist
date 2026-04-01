@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNB Studio 녹음 작업 관리</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap');
+:root {
+  --bg:#0a0a0f; --bg-card:#12121a; --bg-card-hover:#1a1a26; --bg-input:#16161f;
+  --border:#2a2a3a; --border-focus:#6366f1;
+  --text:#e8e8ef; --text-dim:#8888a0; --text-muted:#55556a;
+  --accent:#6366f1; --accent-glow:rgba(99,102,241,0.15);
+  --green:#22c55e; --green-bg:rgba(34,197,94,0.1);
+  --red:#ef4444; --red-bg:rgba(239,68,68,0.15);
+  --yellow:#f59e0b; --yellow-bg:rgba(245,158,11,0.1);
+  --blue:#3b82f6; --blue-bg:rgba(59,130,246,0.1);
+  --cyan:#06b6d4; --orange:#f97316; --pink:#ec4899;
+  --hi-orig:#00e5ff; --hi-orig-bg:rgba(0,229,255,0.12);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+.app-header{background:linear-gradient(135deg,#12121a,#1a1028);border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.app-header h1{font-size:21px;font-weight:700;letter-spacing:-0.5px;}
+.app-header h1 span{color:var(--accent);}
+.header-actions{display:flex;gap:8px;}
+.btn{font-family:inherit;font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+.btn:hover{background:var(--bg-card-hover);border-color:var(--text-muted);}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:#5558e6;}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.btn-icon{padding:5px 7px;font-size:12px;}
+.btn-warn{background:var(--yellow);border-color:var(--yellow);color:#000;}
+
+.tab-bar{display:flex;gap:0;padding:0 28px;background:var(--bg-card);border-bottom:1px solid var(--border);}
+.tab-btn{font-family:inherit;font-size:14px;font-weight:500;padding:13px 22px;border:none;background:none;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+.main-content{padding:20px 28px;max-width:1600px;margin:0 auto;}
+.section-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px;}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;}
+.stat-label{font-size:11px;color:var(--text-dim);margin-bottom:3px;}
+.stat-value{font-size:24px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.stat-value.green{color:var(--green);} .stat-value.red{color:var(--red);}
+.stat-value.yellow{color:var(--yellow);} .stat-value.blue{color:var(--blue);}
+.stat-value.accent{color:var(--accent);}
+
+.filter-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
+.search-wrapper{position:relative;flex:1;min-width:180px;}
+.search-wrapper::before{content:'🔍';position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;}
+.search-input{width:100%;padding:9px 12px 9px 34px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:inherit;font-size:13px;outline:none;}
+.search-input:focus{border-color:var(--border-focus);}
+select.filter-select{padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:inherit;font-size:13px;outline:none;cursor:pointer;}
+
+/* 일괄변경 바 */
+.bulk-bar{display:none;align-items:center;gap:10px;padding:10px 16px;margin-bottom:12px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:10px;font-size:13px;}
+.bulk-bar.show{display:flex;}
+.bulk-bar .bulk-count{font-weight:700;color:var(--accent);margin-right:4px;}
+
+.table-container{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.table-scroll{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{background:#16161f;padding:10px 10px;text-align:left;font-weight:600;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0;}
+thead th:hover{color:var(--text);}
+thead th .sort-arrow{margin-left:3px;font-size:9px;opacity:0.4;}
+thead th.sorted .sort-arrow{opacity:1;color:var(--accent);}
+thead th.no-sort{cursor:default;}
+tbody tr{border-bottom:1px solid rgba(42,42,58,0.4);transition:all .15s ease;}
+tbody tr:hover{background:rgba(99,102,241,0.07) !important;box-shadow:inset 0 0 0 1px rgba(99,102,241,0.15);}
+tbody tr.row-selected{background:rgba(99,102,241,0.08);}
+tbody tr.date-alt{background:rgba(255,255,255,0.015);}
+tbody tr.date-alt:hover{background:rgba(99,102,241,0.09) !important;}
+tbody td{padding:8px 10px;white-space:nowrap;}
+tbody td.wrap{white-space:normal;max-width:200px;}
+
+/* 체크박스 */
+.row-cb{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
+
+/* 취소 row 하이라이트 */
+tr.row-cancelled td.col-title,tr.row-cancelled td.col-status,tr.row-cancelled td.col-ytdate{color:var(--red)!important;background:var(--red-bg)!important;}
+tr.row-cancelled td.col-title{font-weight:600;}
+
+/* 본인곡 */
+.original-highlight{color:var(--hi-orig)!important;font-weight:700!important;background:var(--hi-orig-bg);padding:2px 8px;border-radius:4px;border:1px solid rgba(0,229,255,0.25);}
+
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-완료{background:var(--green-bg);color:var(--green);}
+.badge-취소{background:var(--red-bg);color:var(--red);}
+.badge-작업중{background:var(--yellow-bg);color:var(--yellow);}
+.badge-미공개{background:rgba(99,102,241,0.12);color:var(--accent);}
+.badge-예정{background:var(--blue-bg);color:var(--blue);}
+
+.cam-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;}
+.cam-Zoom{background:rgba(6,182,212,0.12);color:var(--cyan);}
+.cam-1{background:rgba(249,115,22,0.12);color:var(--orange);}
+.cam-풍경{background:rgba(236,72,153,0.12);color:var(--pink);}
+.cam-3{background:rgba(99,102,241,0.12);color:var(--accent);}
+.cam-사이드캠{background:rgba(34,197,94,0.12);color:var(--green);}
+.cam-녹음실{background:rgba(245,158,11,0.12);color:var(--yellow);}
+.cam-서비스{background:rgba(148,163,184,0.15);color:#94a3b8;}
+
+/* 인라인 편집 셀: 클릭 가능 표시 */
+td.inline-editable{cursor:pointer;position:relative;}
+td.inline-editable:hover{background:rgba(99,102,241,0.06);}
+
+/* 인라인 select */
+.inline-select{background:var(--bg-input);border:1px solid var(--border-focus);border-radius:5px;color:var(--text);font-family:inherit;font-size:12px;padding:3px 4px;outline:none;cursor:pointer;max-width:90px;}
+
+/* 인라인 유튜브 게시일 */
+.ytdate-inline{cursor:pointer;padding:3px 8px;border-radius:6px;transition:background .15s;display:inline-flex;align-items:center;gap:4px;}
+.ytdate-inline:hover{background:rgba(99,102,241,0.15);}
+.ytdate-empty{color:var(--text-muted);font-size:12px;cursor:pointer;padding:3px 8px;border-radius:6px;border:1px dashed var(--border);transition:all .15s;}
+.ytdate-empty:hover{border-color:var(--accent);color:var(--accent);}
+.ytdate-clickable{cursor:pointer;transition:opacity .15s;}
+.ytdate-clickable:hover{opacity:0.8;}
+.ytdate-edit-input{background:var(--bg-input);border:1px solid var(--border-focus);border-radius:6px;color:var(--text);font-family:inherit;font-size:12px;padding:4px 6px;color-scheme:dark;outline:none;width:130px;}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:200;justify-content:center;align-items:flex-start;padding-top:50px;overflow-y:auto;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;width:680px;max-width:95vw;padding:24px;margin-bottom:40px;animation:modalIn .2s ease-out;}
+@keyframes modalIn{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+.modal h2{font-size:17px;font-weight:700;margin-bottom:18px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-group{display:flex;flex-direction:column;gap:4px;}
+.form-group.full{grid-column:1/-1;}
+.form-group label{font-size:11px;font-weight:600;color:var(--text-dim);}
+.form-group input,.form-group select,.form-group textarea{padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:inherit;font-size:13px;outline:none;}
+.form-group input[type="date"]{color-scheme:dark;cursor:pointer;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--border-focus);}
+.form-group textarea{resize:vertical;min-height:55px;}
+.form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+
+.autocomplete-wrapper{position:relative;}
+.autocomplete-list{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;max-height:150px;overflow-y:auto;z-index:10;margin-top:2px;}
+.autocomplete-list.show{display:block;}
+.autocomplete-item{padding:7px 12px;font-size:13px;cursor:pointer;}
+.autocomplete-item:hover{background:var(--bg-card-hover);}
+
+.schedule-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:20px;}
+.schedule-header{padding:8px;text-align:center;font-size:12px;font-weight:600;color:var(--text-dim);}
+.schedule-cell{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px;min-height:85px;}
+.schedule-cell:hover{border-color:var(--text-muted);}
+.schedule-cell.today{border-color:var(--accent);background:var(--accent-glow);}
+.schedule-cell.other-month{opacity:0.3;}
+.schedule-date{font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text-dim);}
+.schedule-cell.today .schedule-date{color:var(--accent);}
+.schedule-item{font-size:10px;padding:2px 5px;margin-bottom:2px;border-radius:3px;background:var(--accent-glow);color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.schedule-item.published{background:var(--green-bg);color:var(--green);}
+.schedule-item.cancelled{background:var(--red-bg);color:var(--red);text-decoration:line-through;}
+.schedule-nav{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+.schedule-nav h3{font-size:18px;font-weight:700;min-width:160px;text-align:center;}
+
+.import-zone{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;color:var(--text-dim);cursor:pointer;transition:all .2s;}
+.import-zone:hover{border-color:var(--accent);color:var(--text);}
+.import-zone.dragover{border-color:var(--accent);background:var(--accent-glow);}
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);font-size:13px;color:var(--text-dim);}
+.page-btns{display:flex;gap:4px;}
+.year-nav{display:flex;gap:6px;align-items:center;margin-bottom:10px;}
+.year-tab{font-family:inherit;font-size:13px;font-weight:600;padding:7px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;transition:all .15s;}
+.year-tab:hover{border-color:var(--text-muted);color:var(--text);}
+.year-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.month-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;}
+.month-tab{font-family:inherit;font-size:12px;font-weight:500;padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;}
+.month-tab:hover{border-color:var(--text-muted);color:var(--text);}
+.month-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.toast-container{position:fixed;top:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;animation:toastIn .3s ease-out;}
+.toast-success{background:#166534;color:#bbf7d0;}
+.toast-error{background:#991b1b;color:#fecaca;}
+.toast-info{background:#1e3a5f;color:#bfdbfe;}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@media(max-width:768px){.app-header{padding:12px 14px;}.app-header h1{font-size:16px;}.tab-bar{padding:0 14px;overflow-x:auto;}.main-content{padding:14px;}.filter-bar{flex-direction:column;}.form-grid{grid-template-columns:1fr;}.stats-row{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+<header class="app-header">
+  <h1>🎙️ <span>SNB</span> Studio 녹음 작업 관리</h1>
+  <div class="header-actions">
+    <button class="btn" onclick="exportJSON()">💾 JSON 내보내기</button>
+    <button class="btn" onclick="importJSON()">📂 JSON 가져오기</button>
+    <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJSONImport(event)">
+  </div>
+</header>
+<nav class="tab-bar">
+  <button class="tab-btn active" data-tab="records" onclick="switchTab('records')">📋 작업 목록</button>
+  <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')">📅 유튜브 스케줄</button>
+  <button class="tab-btn" data-tab="import" onclick="switchTab('import')">📥 CSV 가져오기</button>
+</nav>
+
+<div class="main-content tab-content" id="tab-records">
+  <div class="stats-row" id="statsRow"></div>
+  <div class="year-nav" id="yearNav"></div>
+  <div class="month-tabs" id="monthTabs"></div>
+  <div class="filter-bar">
+    <div class="search-wrapper">
+      <input type="text" class="search-input" id="searchInput" placeholder="노래제목, 가수, 원곡자, 비고 검색..." oninput="renderTable()">
+    </div>
+    <select class="filter-select" id="filterCamera" onchange="renderTable()"><option value="">카메라 전체</option></select>
+    <select class="filter-select" id="filterStatus" onchange="renderTable()">
+      <option value="">작업상태 전체</option><option value="작업중">작업중</option><option value="완료">완료</option><option value="취소">취소</option>
+    </select>
+    <select class="filter-select" id="filterYT" onchange="renderTable()">
+      <option value="">게시 전체</option><option value="공개">공개</option><option value="미공개">미공개</option><option value="미정">미정</option>
+    </select>
+    <button class="btn btn-primary" onclick="openForm()">+ 새 작업</button>
+  </div>
+
+  <!-- 일괄변경 바 -->
+  <div class="bulk-bar" id="bulkBar">
+    <span><span class="bulk-count" id="bulkCount">0</span>건 선택됨</span>
+    <span style="color:var(--text-dim);">→</span>
+    <select class="filter-select" id="bulkAction" style="padding:6px 10px;font-size:12px;">
+      <option value="">일괄 변경할 항목</option>
+      <option value="status:완료">작업 → 완료</option>
+      <option value="status:취소">작업 → 취소</option>
+      <option value="status:작업중">작업 → 작업중</option>
+    </select>
+    <button class="btn btn-sm btn-warn" onclick="applyBulk()">적용</button>
+    <button class="btn btn-sm" onclick="clearSelection()" style="margin-left:auto;">선택 해제</button>
+  </div>
+
+  <div class="table-container">
+    <div class="table-scroll">
+      <table><thead><tr id="tableHead"></tr></thead><tbody id="tableBody"></tbody></table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<div class="main-content tab-content" id="tab-schedule" style="display:none">
+  <div class="schedule-nav">
+    <button class="btn btn-sm" onclick="changeMonth(-1)">◀</button>
+    <h3 id="scheduleMonthLabel"></h3>
+    <button class="btn btn-sm" onclick="changeMonth(1)">▶</button>
+    <button class="btn btn-sm" onclick="goToday()">오늘</button>
+  </div>
+  <div class="schedule-grid" id="scheduleGrid"></div>
+  <div id="scheduleDayDetail"></div>
+</div>
+
+<div class="main-content tab-content" id="tab-import" style="display:none">
+  <div class="section-title">📥 CSV / 엑셀 데이터 가져오기</div>
+  <div class="import-zone" id="importZone" onclick="document.getElementById('csvFileInput').click()">
+    <div style="font-size:40px;margin-bottom:10px;">📄</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:5px;">CSV 파일을 드래그하거나 클릭해서 선택</div>
+    <div style="font-size:12px;">UTF-8 인코딩의 .csv 파일 지원</div>
+  </div>
+  <input type="file" id="csvFileInput" accept=".csv,.tsv,.txt" style="display:none" onchange="handleCSVFile(event)">
+  <div id="csvPreview" style="margin-top:20px;"></div>
+  <div id="csvMapping" style="margin-top:20px;"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <h2 id="modalTitle">🎵 새 작업 등록</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>녹음일</label><input type="date" id="f_date" onchange="updateAutoOrder()"></div>
+      <div class="form-group"><label>순번 (월별 자동)</label><input type="number" id="f_order" min="1" readonly style="opacity:0.7;cursor:default;"></div>
+      <div class="form-group"><label>노래제목</label><input type="text" id="f_title" placeholder="노래 제목 입력"></div>
+      <div class="form-group autocomplete-wrapper"><label>가수</label><input type="text" id="f_singer" placeholder="가수명" oninput="showAC(this,'singer')" onfocus="showAC(this,'singer')"><div class="autocomplete-list" id="ac_singer"></div></div>
+      <div class="form-group autocomplete-wrapper"><label>원곡자</label><input type="text" id="f_original" placeholder="본인곡이면 '본인곡' 입력" oninput="showAC(this,'original')" onfocus="showAC(this,'original')"><div class="autocomplete-list" id="ac_original"></div></div>
+      <div class="form-group"><label>카메라</label><select id="f_camera"><option value="풍경">풍경</option><option value="1">1</option><option value="Zoom" selected>Zoom</option><option value="3">3</option><option value="사이드캠">사이드캠</option><option value="녹음실">녹음실</option><option value="×">×</option><option value="서비스">서비스</option></select></div>
+      <div class="form-group"><label>키</label><select id="f_key"><option value="" selected>-</option><option value="C">C</option><option value="Db">Db</option><option value="D">D</option><option value="Eb">Eb</option><option value="E">E</option><option value="F">F</option><option value="F#">F#</option><option value="F#m">F#m</option><option value="G">G</option><option value="Ab">Ab</option><option value="A">A</option><option value="Bb">Bb</option><option value="B">B</option><option value="Cm">Cm</option><option value="C#m">C#m</option><option value="Dm">Dm</option><option value="Ebm">Ebm</option><option value="Em">Em</option><option value="Fm">Fm</option><option value="Gm">Gm</option><option value="G#m">G#m</option><option value="Am">Am</option><option value="Bbm">Bbm</option><option value="Bm">Bm</option><option value="MR">MR</option><option value="AR">AR</option></select></div>
+      <div class="form-group"><label>쇼츠</label><select id="f_shorts"><option value="" selected>-</option><option value="○">○</option><option value="×">×</option></select></div>
+      <div class="form-group"><label>가사</label><select id="f_lyrics"><option value="" selected>-</option><option value="○">○</option><option value="×">×</option></select></div>
+      <div class="form-group"><label>녹음</label><select id="f_recording"><option value="" selected>-</option><option value="○">○</option><option value="×">×</option></select></div>
+      <div class="form-group"><label>작업</label><select id="f_status"><option value="작업중" selected>작업중</option><option value="완료">완료</option><option value="취소">취소</option></select></div>
+      <div class="form-group"><label>유튜브 게시일</label><input type="date" id="f_ytDate"></div>
+      <div class="form-group"><label>공개상태</label><select id="f_ytStatus"><option value="">-</option><option value="공개">공개</option><option value="미공개">미공개</option></select></div>
+      <div class="form-group"><label>전화번호</label><input type="text" id="f_phone" placeholder="010-0000-0000"></div>
+      <div class="form-group full"><label>비고</label><textarea id="f_memo" placeholder="메모 입력"></textarea></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveRecord()">저장</button>
+    </div>
+  </div>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ═══ FIREBASE ═══
+const firebaseConfig = {
+  apiKey: "AIzaSyCp3lYeptNq9w8V8uxJ-COOrBLrUWbuzpc",
+  authDomain: "sbn-work-list.firebaseapp.com",
+  projectId: "sbn-work-list",
+  storageBucket: "sbn-work-list.firebasestorage.app",
+  messagingSenderId: "589788552857",
+  appId: "1:589788552857:web:177f8c3385052a04496208"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const COLLECTION = 'recordings';
+
+const STORAGE_KEY='snb_recording_v1';
+let records=[],editId=null,sortCol='date',sortDir=-1,currentPage=1;
+const PAGE_SIZE=50;
+let scheduleYear,scheduleMonth;
+let selectedYear=new Date().getFullYear().toString();
+let selectedMonth=String(new Date().getMonth()+1).padStart(2,'0');
+let selectedIds=new Set();
+let firestoreReady=false;
+
+// 드롭다운 옵션 정의
+const OPT_CAMERA=['풍경','1','Zoom','3','사이드캠','녹음실','×','서비스'];
+const OPT_KEY=['','C','Db','D','Eb','E','F','F#','F#m','G','Ab','A','Bb','B','Cm','C#m','Dm','Ebm','Em','Fm','Gm','G#m','Am','Bbm','Bm','MR','AR'];
+const OPT_CHECK=['','○','×'];
+const OPT_STATUS=['작업중','완료','취소'];
+
+// localStorage 백업
+function loadLocal(){try{const d=localStorage.getItem(STORAGE_KEY);return d?JSON.parse(d):[];}catch(e){return [];}}
+function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(records));}
+
+// Firestore 개별 저장/삭제
+async function saveRecord_fs(rec){
+  try{await db.collection(COLLECTION).doc(rec.id).set(rec);}
+  catch(e){console.warn('Firestore 저장 실패:',e);}
+  saveLocal();
+}
+async function deleteRecord_fs(id){
+  try{await db.collection(COLLECTION).doc(id).delete();}
+  catch(e){console.warn('Firestore 삭제 실패:',e);}
+  saveLocal();
+}
+// 전체 동기화 (bulk import 등)
+async function syncAllToFirestore(){
+  try{
+    const batch=db.batch();
+    // 기존 컬렉션 전부 삭제 후 다시 쓰기 (batch 500개 제한 주의)
+    const snap=await db.collection(COLLECTION).get();
+    snap.docs.forEach(doc=>batch.delete(doc.ref));
+    // batch 실행 후 새로 추가
+    await batch.commit();
+    // 500개씩 나눠서 추가
+    for(let i=0;i<records.length;i+=450){
+      const b2=db.batch();
+      records.slice(i,i+450).forEach(r=>{b2.set(db.collection(COLLECTION).doc(r.id),r);});
+      await b2.commit();
+    }
+  }catch(e){console.warn('Firestore 전체 동기화 실패:',e);}
+  saveLocal();
+}
+function saveData(){saveLocal();} // 호환용, 개별 저장은 saveRecord_fs 사용
+function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.tab-content').forEach(c=>c.style.display='none');
+  document.getElementById('tab-'+tab).style.display='';
+  if(tab==='schedule')renderSchedule();
+  if(tab==='records'){renderYearNav();renderMonthTabs();renderStats();renderTable();}
+}
+
+// 현재 필터 문자열 (getFilteredRecords에서 사용)
+function getSelectedPrefix(){
+  if(selectedMonth==='all') return selectedYear;
+  return selectedYear+'-'+selectedMonth;
+}
+
+// YEAR NAV
+function renderYearNav(){
+  const years=[...new Set(records.map(r=>r.date?r.date.slice(0,4):'').filter(Boolean))].sort().reverse();
+  const curYear=new Date().getFullYear().toString();
+  if(!years.includes(curYear)) years.unshift(curYear);
+  years.sort().reverse();
+  if(!years.includes(selectedYear)) selectedYear=years[0]||curYear;
+  let html=years.map(y=>`<button class="year-tab ${selectedYear===y?'active':''}" onclick="selectYear('${y}')">${y}년</button>`).join('');
+  document.getElementById('yearNav').innerHTML=html;
+}
+
+function selectYear(y){
+  selectedYear=y;
+  selectedMonth='all'; // 년도 선택 시 전체 월 보기
+  currentPage=1;selectedIds.clear();updateBulkBar();
+  renderYearNav();renderMonthTabs();renderStats();renderTable();
+}
+
+// MONTH TABS
+function renderMonthTabs(){
+  const monthsInYear=[...new Set(records.filter(r=>r.date&&r.date.startsWith(selectedYear)).map(r=>r.date.slice(5,7)))].sort();
+  let html=`<button class="month-tab ${selectedMonth==='all'?'active':''}" onclick="selectMonthTab('all')">${selectedYear}년 전체</button>`;
+  monthsInYear.forEach(mo=>{
+    html+=`<button class="month-tab ${selectedMonth===mo?'active':''}" onclick="selectMonthTab('${mo}')">${parseInt(mo)}월</button>`;
+  });
+  document.getElementById('monthTabs').innerHTML=html;
+}
+
+function selectMonthTab(m){
+  selectedMonth=m;
+  currentPage=1;selectedIds.clear();updateBulkBar();
+  renderMonthTabs();renderStats();renderTable();
+}
+
+// STATS
+function renderStats(){
+  const prefix=getSelectedPrefix();
+  const base=records.filter(r=>r.date&&r.date.startsWith(prefix));
+  const t=base.length,d=base.filter(r=>r.status==='완료').length,w=base.filter(r=>r.status==='작업중').length,
+    c=base.filter(r=>r.status==='취소').length,p=base.filter(r=>r.ytDate&&r.ytStatus!=='미공개').length,
+    u=base.filter(r=>r.ytStatus==='미공개').length;
+  document.getElementById('statsRow').innerHTML=`
+    <div class="stat-card"><div class="stat-label">전체</div><div class="stat-value accent">${t}</div></div>
+    <div class="stat-card"><div class="stat-label">작업중</div><div class="stat-value yellow">${w}</div></div>
+    <div class="stat-card"><div class="stat-label">완료</div><div class="stat-value green">${d}</div></div>
+    <div class="stat-card"><div class="stat-label">취소</div><div class="stat-value red">${c}</div></div>
+    <div class="stat-card"><div class="stat-label">유튜브 공개</div><div class="stat-value blue">${p}</div></div>
+    <div class="stat-card"><div class="stat-label">미공개</div><div class="stat-value accent">${u}</div></div>`;
+}
+
+function populateFilters(){
+  const cams=[...new Set(records.map(r=>r.camera).filter(Boolean))].sort();
+  document.getElementById('filterCamera').innerHTML='<option value="">카메라 전체</option>'+cams.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+
+function getFilteredRecords(){
+  const q=document.getElementById('searchInput').value.trim().toLowerCase();
+  const cam=document.getElementById('filterCamera').value,st=document.getElementById('filterStatus').value,yt=document.getElementById('filterYT').value;
+  const prefix=getSelectedPrefix();
+  let f=records.filter(r=>{
+    if(!r.date||!r.date.startsWith(prefix))return false;
+    if(q&&![r.title,r.singer,r.original,r.memo].some(v=>(v||'').toLowerCase().includes(q)))return false;
+    if(cam&&r.camera!==cam)return false;
+    if(st&&r.status!==st)return false;
+    if(yt==='공개'&&!(r.ytDate&&r.ytStatus!=='미공개'))return false;
+    if(yt==='미공개'&&r.ytStatus!=='미공개')return false;
+    if(yt==='미정'&&(r.ytDate||r.ytStatus))return false;
+    return true;
+  });
+  f.sort((a,b)=>{let va=a[sortCol]||'',vb=b[sortCol]||'';if(sortCol==='order'){va=parseInt(va)||0;vb=parseInt(vb)||0;}if(va<vb)return -1*sortDir;if(va>vb)return 1*sortDir;return 0;});
+  return f;
+}
+
+// ═══ TABLE ═══
+const columns=[
+  {key:'_cb',label:'',w:'36px',noSort:true},
+  {key:'date',label:'녹음일',w:'90px'},{key:'order',label:'순번',w:'46px'},
+  {key:'title',label:'노래제목',w:'165px'},{key:'singer',label:'가수',w:'80px'},
+  {key:'original',label:'원곡자',w:'80px'},{key:'camera',label:'카메라',w:'80px'},
+  {key:'key',label:'키',w:'65px'},{key:'shorts',label:'쇼츠',w:'52px'},
+  {key:'lyrics',label:'가사',w:'52px'},{key:'recording',label:'녹음',w:'52px'},
+  {key:'status',label:'작업',w:'72px'},{key:'ytDate',label:'유튜브 게시일',w:'140px'},
+  {key:'phone',label:'전화번호',w:'110px'},{key:'memo',label:'비고',w:'100px'},{key:'_actions',label:'',w:'70px'},
+];
+
+function renderTableHead(){
+  const allFiltered=getFilteredRecords();
+  const allChecked=allFiltered.length>0&&allFiltered.every(r=>selectedIds.has(r.id));
+  document.getElementById('tableHead').innerHTML=columns.map(c=>{
+    if(c.key==='_cb') return `<th class="no-sort" style="width:${c.w};text-align:center;"><input type="checkbox" class="row-cb" ${allChecked?'checked':''} onchange="toggleAll(this.checked)"></th>`;
+    if(c.key==='_actions')return `<th style="width:${c.w}"></th>`;
+    const sorted=sortCol===c.key;
+    const arrow=sorted?(sortDir===1?'▲':'▼'):'▲';
+    return `<th class="${sorted?'sorted':''}" style="width:${c.w}" onclick="toggleSort('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
+  }).join('');
+}
+function toggleSort(col){if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=col==='date'?-1:1;}renderTable();}
+
+function renderTable(){
+  renderTableHead();
+  const filtered=getFilteredRecords();
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  if(currentPage>totalPages)currentPage=totalPages;
+  const start=(currentPage-1)*PAGE_SIZE;
+  const page=filtered.slice(start,start+PAGE_SIZE);
+
+  document.getElementById('tableBody').innerHTML=page.map((r,idx)=>{
+    const isCancelled=r.status==='취소';
+    const isOriginal=(r.original||'').trim()==='본인곡';
+
+    // 날짜별 교차 배경색 계산
+    const dateGroup=(()=>{
+      if(idx===0) return 0;
+      let group=0;
+      let prevDate=page[0].date||'';
+      for(let i=1;i<=idx;i++){
+        if((page[i].date||'')!==prevDate){group++;prevDate=page[i].date||'';}
+      }
+      return group;
+    })();
+    const dateAlt=dateGroup%2===1?'date-alt':'';
+
+    const rowClass=[isCancelled?'row-cancelled':'',selectedIds.has(r.id)?'row-selected':'',dateAlt].filter(Boolean).join(' ');
+    const checked=selectedIds.has(r.id)?'checked':'';
+    const camKey=(r.camera||'').replace(/[^a-zA-Z가-힣0-9]/g,'');
+
+    // 유튜브 게시일: 날짜 또는 미공개
+    let ytDisplay='';
+    if(r.ytStatus==='미공개'){
+      ytDisplay=`<span class="badge badge-미공개 ytdate-clickable" onclick="inlineYtDate('${r.id}',event)">미공개</span>`;
+    } else if(r.ytDate){
+      ytDisplay=`<span class="ytdate-inline" onclick="inlineYtDate('${r.id}',event)">${formatDate(r.ytDate)}</span>`;
+    } else {
+      ytDisplay=`<span class="ytdate-empty" onclick="inlineYtDate('${r.id}',event)">+ 게시일</span>`;
+    }
+
+    const originalHTML=isOriginal?`<span class="original-highlight">본인곡</span>`:esc(r.original);
+
+    return `<tr class="${rowClass}">
+      <td style="text-align:center;"><input type="checkbox" class="row-cb" ${checked} onchange="toggleRow('${r.id}',this.checked)"></td>
+      <td>${formatDate(r.date)}</td>
+      <td style="text-align:center;font-family:'JetBrains Mono',monospace;">${r.order||''}</td>
+      <td class="wrap col-title" style="font-weight:500;">${esc(r.title)}</td>
+      <td>${esc(r.singer)}</td>
+      <td>${originalHTML}</td>
+      <td class="inline-editable" onclick="inlineSelect('${r.id}','camera',this,OPT_CAMERA)">${r.camera?`<span class="cam-badge cam-${camKey}">${esc(r.camera)}</span>`:'-'}</td>
+      <td class="inline-editable" onclick="inlineSelect('${r.id}','key',this,OPT_KEY)" style="font-weight:600;">${esc(r.key)||'-'}</td>
+      <td class="inline-editable" onclick="inlineSelect('${r.id}','shorts',this,OPT_CHECK)" style="text-align:center;">${fmtCheck(r.shorts)}</td>
+      <td class="inline-editable" onclick="inlineSelect('${r.id}','lyrics',this,OPT_CHECK)" style="text-align:center;">${fmtCheck(r.lyrics)}</td>
+      <td class="inline-editable" onclick="inlineSelect('${r.id}','recording',this,OPT_CHECK)" style="text-align:center;">${fmtCheck(r.recording)}</td>
+      <td class="col-status inline-editable" onclick="inlineSelect('${r.id}','status',this,OPT_STATUS)"><span class="badge badge-${r.status}">${esc(r.status)}</span></td>
+      <td class="col-ytdate">${ytDisplay}</td>
+      <td style="font-size:12px;color:var(--text-dim);">${esc(r.phone)}</td>
+      <td class="wrap" style="color:var(--text-dim);font-size:12px;" title="${esc(r.memo)}">${esc(truncate(r.memo,16))}</td>
+      <td>
+        <button class="btn btn-sm btn-icon" onclick="event.stopPropagation();openForm('${r.id}')" title="수정">✏️</button>
+        <button class="btn btn-sm btn-icon" onclick="event.stopPropagation();deleteRecord('${r.id}')" title="삭제">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('pagination').innerHTML=`
+    <span>${filtered.length}건 중 ${filtered.length?start+1:0}-${Math.min(start+PAGE_SIZE,filtered.length)}</span>
+    <div class="page-btns">
+      <button class="btn btn-sm" onclick="goPage(${currentPage-1})" ${currentPage<=1?'disabled':''}>◀</button>
+      <span style="padding:0 8px;font-size:13px;">${currentPage} / ${totalPages}</span>
+      <button class="btn btn-sm" onclick="goPage(${currentPage+1})" ${currentPage>=totalPages?'disabled':''}>▶</button>
+    </div>`;
+}
+function goPage(p){currentPage=p;renderTable();}
+
+// ═══ INLINE SELECT EDIT ═══
+function inlineSelect(id, field, td, options) {
+  // 이미 select가 열려있으면 무시
+  if(td.querySelector('.inline-select')) return;
+  const r=records.find(x=>x.id===id);
+  if(!r) return;
+
+  const currentVal=r[field]||'';
+  const sel=document.createElement('select');
+  sel.className='inline-select';
+  options.forEach(o=>{
+    const opt=document.createElement('option');
+    opt.value=o; opt.textContent=o||'-';
+    if(o===currentVal) opt.selected=true;
+    sel.appendChild(opt);
+  });
+
+  td.textContent='';
+  td.appendChild(sel);
+  sel.focus();
+
+  // 열기 시도
+  try{sel.showPicker();}catch(e){}
+
+  sel.addEventListener('change',()=>{
+    r[field]=sel.value;
+    saveData();saveRecord_fs(r);
+    renderStats();
+    renderTable();
+    toast(`${field==='status'?'작업상태':field} 변경 완료`,'success');
+  });
+  sel.addEventListener('blur',()=>{
+    setTimeout(()=>renderTable(),100);
+  });
+}
+
+// ═══ INLINE YOUTUBE DATE ═══
+function inlineYtDate(id,event){
+  event.stopPropagation();
+  const td=event.target.closest('td');if(!td)return;
+  const r=records.find(x=>x.id===id);if(!r)return;
+  if(td.querySelector('.ytdate-edit-wrap'))return;
+
+  td.innerHTML=`<div class="ytdate-edit-wrap" style="display:flex;gap:4px;align-items:center;">
+    <input type="date" class="ytdate-edit-input" value="${r.ytDate||''}"
+      onchange="saveInlineYtDate('${id}',this.value)"
+      style="width:120px;">
+    <button class="btn btn-sm" style="padding:3px 8px;font-size:11px;white-space:nowrap;" onclick="saveInlineYtPrivate('${id}')">미공개</button>
+  </div>`;
+
+  const input=td.querySelector('input[type="date"]');
+  input.focus();
+  try{input.showPicker();}catch(e){}
+
+  // 바깥 클릭 시 닫기
+  const closeHandler=(e)=>{
+    if(!td.contains(e.target)){
+      document.removeEventListener('mousedown',closeHandler);
+      renderTable();
+    }
+  };
+  setTimeout(()=>document.addEventListener('mousedown',closeHandler),50);
+}
+function saveInlineYtDate(id,value){
+  const r=records.find(x=>x.id===id);if(!r)return;
+  r.ytDate=value;
+  r.ytStatus=value?'':'';
+  saveData();saveRecord_fs(r);renderTable();toast('유튜브 게시일 설정 완료','success');
+}
+function saveInlineYtPrivate(id){
+  const r=records.find(x=>x.id===id);if(!r)return;
+  r.ytDate='';
+  r.ytStatus='미공개';
+  saveData();saveRecord_fs(r);renderStats();renderTable();toast('미공개로 설정 완료','success');
+}
+function cancelInlineEdit(input){setTimeout(()=>renderTable(),150);}
+
+// ═══ CHECKBOX / BULK ═══
+function toggleRow(id,checked){
+  if(checked) selectedIds.add(id); else selectedIds.delete(id);
+  updateBulkBar();
+  // 해당 행 스타일만 업데이트
+  renderTable();
+}
+function toggleAll(checked){
+  const filtered=getFilteredRecords();
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  const start=(currentPage-1)*PAGE_SIZE;
+  const page=filtered.slice(start,start+PAGE_SIZE);
+  page.forEach(r=>{if(checked)selectedIds.add(r.id);else selectedIds.delete(r.id);});
+  updateBulkBar();
+  renderTable();
+}
+function clearSelection(){selectedIds.clear();updateBulkBar();renderTable();}
+function updateBulkBar(){
+  const bar=document.getElementById('bulkBar');
+  const count=selectedIds.size;
+  document.getElementById('bulkCount').textContent=count;
+  bar.classList.toggle('show',count>0);
+}
+
+function applyBulk(){
+  const action=document.getElementById('bulkAction').value;
+  if(!action){toast('변경할 항목을 선택하세요','error');return;}
+  if(selectedIds.size===0){toast('선택된 작업이 없습니다','error');return;}
+  const[field,value]=action.split(':');
+  let count=0;
+  const changed=[];
+  records.forEach(r=>{
+    if(selectedIds.has(r.id)){r[field]=value;count++;changed.push(r);}
+  });
+  saveData();
+  changed.forEach(r=>saveRecord_fs(r));
+  selectedIds.clear();updateBulkBar();
+  document.getElementById('bulkAction').value='';
+  renderStats();renderTable();
+  toast(`${count}건 일괄 변경 완료`,'success');
+}
+
+// ═══ AUTO ORDER ═══
+function getAutoOrder(dateStr,excludeId){
+  if(!dateStr)return 1;
+  return records.filter(r=>r.date===dateStr&&r.id!==excludeId).length+1;
+}
+function updateAutoOrder(){document.getElementById('f_order').value=getAutoOrder(document.getElementById('f_date').value,editId);}
+
+// ═══ FORM ═══
+function openForm(id){
+  editId=id||null;const r=editId?records.find(x=>x.id===editId):null;
+  document.getElementById('modalTitle').textContent=r?'✏️ 작업 수정':'🎵 새 작업 등록';
+  document.getElementById('f_date').value=r?r.date:new Date().toISOString().slice(0,10);
+  if(r)document.getElementById('f_order').value=r.order;else updateAutoOrder();
+  document.getElementById('f_title').value=r?r.title:'';
+  document.getElementById('f_singer').value=r?r.singer:'';
+  document.getElementById('f_original').value=r?r.original:'';
+  document.getElementById('f_camera').value=r?r.camera:'Zoom';
+  document.getElementById('f_key').value=r?r.key:'';
+  document.getElementById('f_shorts').value=r?r.shorts:'';
+  document.getElementById('f_lyrics').value=r?r.lyrics:'';
+  document.getElementById('f_recording').value=r?r.recording:'';
+  document.getElementById('f_status').value=r?r.status:'작업중';
+  document.getElementById('f_ytDate').value=r?r.ytDate:'';
+  document.getElementById('f_ytStatus').value=r?(r.ytStatus||''):'';
+  document.getElementById('f_phone').value=r?r.phone:'';
+  document.getElementById('f_memo').value=r?r.memo:'';
+  document.getElementById('f_order').readOnly=!editId;
+  document.getElementById('modalOverlay').classList.add('show');
+  setTimeout(()=>document.getElementById('f_title').focus(),100);
+}
+function closeModal(){document.getElementById('modalOverlay').classList.remove('show');editId=null;}
+function closeModalOutside(e){if(e.target===e.currentTarget)closeModal();}
+
+function saveRecord(){
+  const data={id:editId||genId(),date:document.getElementById('f_date').value,order:document.getElementById('f_order').value,
+    title:document.getElementById('f_title').value.trim(),singer:document.getElementById('f_singer').value.trim(),
+    original:document.getElementById('f_original').value.trim(),camera:document.getElementById('f_camera').value,
+    key:document.getElementById('f_key').value,shorts:document.getElementById('f_shorts').value,
+    lyrics:document.getElementById('f_lyrics').value,recording:document.getElementById('f_recording').value,
+    status:document.getElementById('f_status').value,ytDate:document.getElementById('f_ytDate').value,
+    ytStatus:document.getElementById('f_ytStatus').value,phone:document.getElementById('f_phone').value.trim(),
+    memo:document.getElementById('f_memo').value.trim()};
+  if(!data.title){toast('노래제목을 입력하세요','error');return;}
+  if(!data.singer){toast('가수를 입력하세요','error');return;}
+  if(editId){const i=records.findIndex(r=>r.id===editId);if(i>=0)records[i]=data;}
+  else records.push(data);
+  saveData();saveRecord_fs(data);
+  closeModal();populateFilters();renderYearNav();renderMonthTabs();renderStats();renderTable();
+  toast(editId?'수정 완료':'등록 완료','success');
+}
+
+function deleteRecord(id){
+  const r=records.find(x=>x.id===id);if(!r)return;
+  if(!confirm(`"${r.title}" (${r.singer}) 삭제할까요?`))return;
+  records=records.filter(x=>x.id!==id);selectedIds.delete(id);
+  saveData();deleteRecord_fs(id);
+  populateFilters();renderYearNav();renderMonthTabs();renderStats();renderTable();updateBulkBar();
+  toast('삭제 완료','info');
+}
+
+// AUTOCOMPLETE
+function showAC(input,field){
+  const list=document.getElementById('ac_'+field),val=input.value.trim().toLowerCase();
+  const key=field==='singer'?'singer':'original';
+  const all=[...new Set(records.map(r=>r[key]).filter(Boolean))].sort();
+  const filtered=val?all.filter(v=>v.toLowerCase().includes(val)):all;
+  if(!filtered.length||(filtered.length===1&&filtered[0].toLowerCase()===val)){list.classList.remove('show');return;}
+  list.innerHTML=filtered.slice(0,10).map(v=>`<div class="autocomplete-item" onmousedown="selAC('${field}',this)">${esc(v)}</div>`).join('');
+  list.classList.add('show');
+}
+function selAC(field,el){document.getElementById('f_'+(field==='singer'?'singer':'original')).value=el.textContent;document.getElementById('ac_'+field).classList.remove('show');}
+document.addEventListener('click',()=>document.querySelectorAll('.autocomplete-list').forEach(l=>l.classList.remove('show')));
+
+// SCHEDULE
+function initSchedule(){const n=new Date();scheduleYear=n.getFullYear();scheduleMonth=n.getMonth();}
+function changeMonth(d){scheduleMonth+=d;if(scheduleMonth>11){scheduleMonth=0;scheduleYear++;}if(scheduleMonth<0){scheduleMonth=11;scheduleYear--;}renderSchedule();}
+function goToday(){const n=new Date();scheduleYear=n.getFullYear();scheduleMonth=n.getMonth();renderSchedule();}
+function renderSchedule(){
+  document.getElementById('scheduleMonthLabel').textContent=`${scheduleYear}년 ${scheduleMonth+1}월`;
+  const firstDay=new Date(scheduleYear,scheduleMonth,1),lastDay=new Date(scheduleYear,scheduleMonth+1,0);
+  const startDow=firstDay.getDay(),daysInMonth=lastDay.getDate(),todayStr=new Date().toISOString().slice(0,10);
+  const days=['일','월','화','수','목','금','토'];
+  let html=days.map(d=>`<div class="schedule-header">${d}</div>`).join('');
+  const prevLast=new Date(scheduleYear,scheduleMonth,0).getDate();
+  for(let i=startDow-1;i>=0;i--)html+=`<div class="schedule-cell other-month"><div class="schedule-date">${prevLast-i}</div></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${scheduleYear}-${String(scheduleMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday=ds===todayStr,dayRecs=records.filter(r=>r.ytDate===ds);
+    const items=dayRecs.map(r=>{const cls=r.status==='취소'?'cancelled':(r.ytStatus!=='미공개'?'published':'');return `<div class="schedule-item ${cls}" title="${r.singer} - ${r.title}">${r.singer}-${truncate(r.title,6)}</div>`;}).join('');
+    html+=`<div class="schedule-cell ${isToday?'today':''}"><div class="schedule-date">${d}</div>${items}</div>`;
+  }
+  const total=startDow+daysInMonth,rem=(7-(total%7))%7;
+  for(let i=1;i<=rem;i++)html+=`<div class="schedule-cell other-month"><div class="schedule-date">${i}</div></div>`;
+  document.getElementById('scheduleGrid').innerHTML=html;
+  const upcoming=records.filter(r=>r.ytDate&&r.ytDate>=todayStr&&r.status!=='취소').sort((a,b)=>a.ytDate.localeCompare(b.ytDate)).slice(0,15);
+  document.getElementById('scheduleDayDetail').innerHTML=upcoming.length?`
+    <div class="section-title" style="margin-top:20px;">📌 다가오는 업로드 예정</div>
+    <div class="table-container"><div class="table-scroll"><table>
+      <thead><tr><th>게시일</th><th>가수</th><th>노래제목</th><th>카메라</th><th>키</th><th>상태</th></tr></thead>
+      <tbody>${upcoming.map(r=>`<tr><td>${formatDate(r.ytDate)}</td><td>${esc(r.singer)}</td><td style="font-weight:500;">${esc(r.title)}</td><td><span class="cam-badge cam-${(r.camera||'').replace(/[^a-zA-Z가-힣0-9]/g,'')}">${esc(r.camera)}</span></td><td>${esc(r.key)}</td><td><span class="badge badge-${r.ytStatus==='미공개'?'미공개':'예정'}">${r.ytStatus||'예정'}</span></td></tr>`).join('')}</tbody>
+    </table></div></div>`:'';
+}
+
+// CSV
+let csvData=null;
+function setupImportDrag(){const z=document.getElementById('importZone');z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('dragover');});z.addEventListener('dragleave',()=>z.classList.remove('dragover'));z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('dragover');if(e.dataTransfer.files.length)processCSV(e.dataTransfer.files[0]);});}
+function handleCSVFile(e){if(e.target.files.length)processCSV(e.target.files[0]);}
+function processCSV(file){Papa.parse(file,{header:true,skipEmptyLines:true,encoding:'UTF-8',complete:r=>{csvData=r.data;showCSVPreview(r);},error:e=>toast('CSV 오류: '+e.message,'error')});}
+function showCSVPreview(results){
+  const headers=results.meta.fields||[],preview=results.data.slice(0,5);
+  const fm=[{key:'date',label:'녹음일',g:['녹음일']},{key:'order',label:'순번',g:['순번','번호']},{key:'title',label:'노래제목',g:['노래제목','곡명','제목']},{key:'singer',label:'가수',g:['가수']},{key:'original',label:'원곡자',g:['원곡자','원곡']},{key:'camera',label:'카메라',g:['카메라']},{key:'key',label:'키',g:['키']},{key:'shorts',label:'쇼츠',g:['쇼츠']},{key:'lyrics',label:'가사',g:['가사']},{key:'recording',label:'녹음',g:['녹음']},{key:'status',label:'작업상태',g:['작업']},{key:'ytDate',label:'유튜브 게시일',g:['유튜브 게시일','게시일','유튜브']},{key:'phone',label:'전화번호',g:['전화번호','전화']},{key:'memo',label:'비고',g:['비고','메모']}];
+  function guess(f){
+    const low=headers.map(h=>h.trim());
+    // 1) 정확 매칭 우선
+    for(const g of f.g){const i=low.findIndex(h=>h===g);if(i>=0)return headers[i];}
+    // 2) 포함 매칭 (단, '녹음'은 '녹음일'을 매칭하지 않도록)
+    for(const g of f.g){const i=low.findIndex(h=>{
+      if(f.key==='recording'&&h.includes('녹음일'))return false;
+      if(f.key==='date'&&h==='녹음')return false;
+      if(f.key==='status'&&h.includes('녹음'))return false;
+      return h.includes(g);
+    });if(i>=0)return headers[i];}
+    return '';
+  }
+  document.getElementById('csvPreview').innerHTML=`<div class="section-title">미리보기 (처음 5행)</div><div class="table-container"><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${preview.map(row=>`<tr>${headers.map(h=>`<td>${esc(row[h]||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  document.getElementById('csvMapping').innerHTML=`<div class="section-title" style="margin-top:20px;">컬럼 매핑</div><div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;"><div class="form-grid">${fm.map(f=>{const g=guess(f);return `<div class="form-group"><label>${f.label}</label><select id="map_${f.key}" class="filter-select"><option value="">- 매핑 안 함 -</option>${headers.map(h=>`<option value="${esc(h)}" ${h===g?'selected':''}>${esc(h)}</option>`).join('')}</select></div>`;}).join('')}</div><div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;align-items:center;"><span style="font-size:13px;color:var(--text-dim);">${csvData.length}건</span><button class="btn btn-primary" onclick="doCSVImport()">가져오기 실행</button></div></div>`;
+}
+function doCSVImport(){
+  if(!csvData||!csvData.length){toast('데이터 없음','error');return;}
+  const m={};['date','order','title','singer','original','camera','key','shorts','lyrics','recording','status','ytDate','phone','memo'].forEach(k=>{m[k]=document.getElementById('map_'+k)?.value||'';});
+  let cnt=0;
+  csvData.forEach(row=>{const rawYt=(row[m.ytDate]||'').trim();let ytDate=normalizeDate(rawYt),ytStatus='';if(rawYt==='미공개'||rawYt.includes('미공개')){ytDate='';ytStatus='미공개';}const r={id:genId(),date:normalizeDate(row[m.date]||''),order:row[m.order]||'',title:(row[m.title]||'').trim(),singer:(row[m.singer]||'').trim(),original:(row[m.original]||'').trim(),camera:(row[m.camera]||'').trim(),key:(row[m.key]||'').trim(),shorts:(row[m.shorts]||'').trim(),lyrics:(row[m.lyrics]||'').trim(),recording:(row[m.recording]||'').trim(),status:(row[m.status]||'작업중').trim(),ytDate,ytStatus,phone:(row[m.phone]||'').trim(),memo:(row[m.memo]||'').trim()};if(r.title){records.push(r);cnt++;}});
+  saveData();syncAllToFirestore();populateFilters();renderYearNav();renderMonthTabs();renderStats();toast(`${cnt}건 가져오기 완료!`,'success');switchTab('records');
+}
+function normalizeDate(v){if(!v)return '';const m1=v.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);if(m1)return `${m1[1]}-${m1[2].padStart(2,'0')}-${m1[3].padStart(2,'0')}`;const m2=v.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);if(m2)return `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`;return '';}
+
+// JSON
+function exportJSON(){const b=new Blob([JSON.stringify(records,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`snb_recording_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(u);toast('JSON 내보내기 완료','success');}
+function importJSON(){document.getElementById('jsonFileInput').click();}
+function handleJSONImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!Array.isArray(d))throw new Error('배열 아님');if(!confirm(`${d.length}건 가져올까요?`))return;d.forEach(r=>{if(!r.id)r.id=genId();records.push(r);});saveData();syncAllToFirestore();populateFilters();renderYearNav();renderMonthTabs();renderStats();renderTable();toast(`${d.length}건 가져오기 완료`,'success');}catch(err){toast('JSON 오류: '+err.message,'error');}};r.readAsText(f);e.target.value='';}
+
+// UTILS
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function truncate(s,n){return(s||'').length>n?s.slice(0,n)+'…':(s||'');}
+function fmtCheck(v){
+  if(v==='○') return '<span style="color:#22c55e;font-weight:800;font-size:15px;">○</span>';
+  if(v==='×') return '<span style="color:#ef4444;font-weight:800;font-size:15px;">×</span>';
+  return '<span style="color:#55556a;">-</span>';
+}
+function formatDate(d){if(!d)return '';const p=d.split('-');if(p.length!==3)return d;return `${p[0]}. ${parseInt(p[1])}. ${parseInt(p[2])}`;}
+function toast(msg,type='info'){const c=document.getElementById('toastContainer'),el=document.createElement('div');el.className=`toast toast-${type}`;el.textContent=msg;c.appendChild(el);setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),300);},2500);}
+
+// INIT
+(async function init(){
+  // 1) localStorage에서 즉시 로드 → 빠른 화면 표시
+  records=loadLocal();
+  initSchedule();populateFilters();renderYearNav();renderMonthTabs();renderStats();renderTable();setupImportDrag();
+
+  // 2) Firestore에서 비동기 로드 → 최신 데이터로 갱신
+  try{
+    const snap=await db.collection(COLLECTION).get();
+    if(!snap.empty){
+      records=snap.docs.map(doc=>{const d=doc.data();d.id=doc.id;return d;});
+      saveLocal();
+      populateFilters();renderYearNav();renderMonthTabs();renderStats();renderTable();
+    }
+    firestoreReady=true;
+    console.log('Firestore 연결 완료:',records.length+'건');
+  }catch(e){
+    console.warn('Firestore 로드 실패, localStorage 데이터 사용:',e);
+  }
+})();
+document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='n'){e.preventDefault();openForm();}if(e.key==='Escape')closeModal();});
+</script>
+</body>
+</html>
